@@ -1,0 +1,22 @@
+import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const require = createRequire(import.meta.url);
+globalThis.self = { location: { href: 'file:///ffmpeg-core.js' } };
+const createCore = require('@ffmpeg/core');
+const core = await createCore({ wasmBinary: readFileSync(require.resolve('@ffmpeg/core/wasm')) });
+core.setLogger(() => {});
+core.exec('-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=12', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '2', '-c:v', 'libx264', '-crf', '18', '-c:a', 'aac', 'input.mp4');
+assert.equal(core.ret, 0, 'fixture generation');
+core.reset();
+core.exec('-i', 'input.mp4', '-map', '0:v:0', '-map', '0:a:0?', '-vf', "scale=w='min(iw,1280)':h='min(ih,1280)':force_original_aspect_ratio=decrease:force_divisible_by=2", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '34', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-y', 'output.mp4');
+assert.equal(core.ret, 0, 'compression');
+const original = core.FS.readFile('input.mp4');
+const result = core.FS.readFile('output.mp4');
+assert.ok(result.length > 0 && result.length < original.length, 'compressed output is smaller');
+core.reset();
+core.exec('-i', 'output.mp4', '-f', 'null', '-');
+assert.equal(core.ret, 0, 'output decodes');
+console.log(`Engine smoke test passed: ${original.length} → ${result.length} bytes; output decoded.`);
+
+process.exit(0);
